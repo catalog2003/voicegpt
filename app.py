@@ -78,22 +78,19 @@ def index():
         </script>
     </body>
     </html>
-    '''
-
+  
+      '''
 @app.route('/convert', methods=['POST'])
 def convert():
     try:
-        webm_path = "uploads/temp.webm"
         wav_path = "uploads/temp.wav"
-        request.files['audio'].save(webm_path)
-        AudioSegment.from_file(webm_path).export(wav_path, format="wav")
+        request.files['audio'].save(wav_path)
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
             audio = recognizer.record(source)
             text = recognizer.recognize_google(audio)
 
-        os.remove(webm_path)
         os.remove(wav_path)
 
         ai_response = send_to_azure_openai(text)
@@ -102,6 +99,7 @@ def convert():
         return jsonify({"ai_response": "I couldn't understand that. Please try again."})
     except Exception as e:
         return jsonify({"ai_response": f"Error: {str(e)}"})
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
