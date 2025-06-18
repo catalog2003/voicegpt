@@ -36,6 +36,8 @@ def index():
     return '''
     <html>
     <head>
+    <script src="https://cdn.jsdelivr.net/gh/mattdiamond/Recorderjs/recorder.js"></script>
+
         <title>🎤 Talk to AI</title>
         <style>
             body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
@@ -49,56 +51,63 @@ def index():
         <button id="stop" onclick="stop()" disabled>Stop</button>
         <p id="status">Ready</p>
         <div id="ai-text"></div>
-        <script>
-            let recorder, chunks = [], speech = window.speechSynthesis;
+      <script>
+let audioContext;
+let recorder;
 
-            async function start() {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                recorder = new MediaRecorder(stream);
-                chunks = [];
+function start() {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(function(stream) {
+            audioContext = new AudioContext();
+            const input = audioContext.createMediaStreamSource(stream);
+            recorder = new Recorder(input, { numChannels: 1 });
+            recorder.record();
 
-                recorder.ondataavailable = e => chunks.push(e.data);
+            document.getElementById("status").innerText = "Recording...";
+            document.getElementById("start").disabled = true;
+            document.getElementById("stop").disabled = false;
+        })
+        .catch(function(err) {
+            console.error('Microphone error:', err);
+            document.getElementById("status").innerText = "Microphone access error";
+        });
+}
 
-                recorder.onstop = async () => {
-                    const blob = new Blob(chunks, { type: 'audio/webm' });
-                    const form = new FormData();
-                    form.append('audio', blob);
+function stop() {
+    recorder.stop(); // Stop recording
 
-                    document.getElementById("status").innerText = "Processing...";
+    document.getElementById("status").innerText = "Processing...";
+    document.getElementById("start").disabled = false;
+    document.getElementById("stop").disabled = true;
 
-                    try {
-                        const res = await fetch('/convert', { method: 'POST', body: form });
-                        const data = await res.json();
-                        const msg = data.ai_response || "Sorry, something went wrong.";
+    // Export .wav and send
+    recorder.exportWAV(function(blob) {
+        const formData = new FormData();
+        formData.append("audio", blob, "recording.wav");
 
-                        // Show response text
-                        document.getElementById("ai-text").innerText = "🤖 AI: " + msg;
+        fetch("/convert", {
+            method: "POST",
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById("status").innerText = "AI responded.";
+            const text = data.ai_response || data.error || "No response";
+            speak(text);
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById("status").innerText = "Error uploading audio.";
+        });
+    });
+}
 
-                        // Speak it aloud
-                        let utter = new SpeechSynthesisUtterance(msg);
-                        speech.cancel(); // stop any ongoing speech
-                        speech.speak(utter);
-                        utter.onend = () => document.getElementById("status").innerText = "Ready";
-                    } catch (e) {
-                        document.getElementById("ai-text").innerText = "❌ Failed to connect to server.";
-                        document.getElementById("status").innerText = "Error";
-                    }
+function speak(text) {
+    const utterance = new SpeechSynthesisUtterance(text);
+    speechSynthesis.speak(utterance);
+}
+</script>
 
-                    chunks = [];
-                };
-
-                recorder.start();
-                document.getElementById("start").disabled = true;
-                document.getElementById("stop").disabled = false;
-                document.getElementById("status").innerText = "Recording...";
-            }
-
-            function stop() {
-                recorder.stop();
-                document.getElementById("start").disabled = false;
-                document.getElementById("stop").disabled = true;
-            }
-        </script>
     </body>
     </html>
     '''
@@ -112,16 +121,21 @@ def convert():
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
             audio = recognizer.record(source)
-            text = recognizer.recognize_google(audio)
+            transcribed_text = recognizer.recognize_google(audio)
 
         os.remove(wav_path)
-        ai_response = send_to_azure_openai(text)
 
-        return jsonify({"ai_response": ai_response})
+        ai_response = send_to_azure_openai(transcribed_text)
+        return jsonify({
+            "transcription": transcribed_text,
+            "ai_response": ai_response
+        })
+
     except sr.UnknownValueError:
-        return jsonify({"ai_response": "Sorry, I couldn't understand that."})
+        return jsonify({"error": "Could not understand audio."})
     except Exception as e:
-        return jsonify({"ai_response": f"Error: {str(e)}"})
+        return jsonify({"error": f"Error: {str(e)}"})
+
 
 
 if __name__ == '__main__':
