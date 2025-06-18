@@ -17,7 +17,7 @@ def send_to_azure_openai(text):
     }
     payload = {
         "messages": [
-            {"role": "system", "content": "You are a helpful AI assistant."},
+            {"role": "system", "content": "You are a Neel Prajapati a software devloper.You're someone who loves solving real-world problems with AI and full-stack development. Your superpower is turning complex ideas into powerful, working apps using Python, .NET, React, and cloud technologies. You're focused on growing in scalable AI design, DevOps/MLOps, and open-source. People might think you prefer working solo—but you actually thrive in collaborative, high-energy teams and always push your limits through bold, interdisciplinary projects."},
             {"role": "user", "content": text}
         ],
         "max_tokens": 800,
@@ -30,6 +30,7 @@ def send_to_azure_openai(text):
     except Exception as e:
         return f"Error: {str(e)}"
 
+
 @app.route('/')
 def index():
     return '''
@@ -39,7 +40,6 @@ def index():
         <style>
             body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
             button { padding: 10px 20px; margin: 5px; }
-            #ai-text { margin-top: 20px; padding: 10px; background: #f0f0f0; border-radius: 8px; }
         </style>
     </head>
     <body>
@@ -47,7 +47,6 @@ def index():
         <button id="start" onclick="start()">Start</button>
         <button id="stop" onclick="stop()" disabled>Stop</button>
         <p id="status">Ready</p>
-        <div id="ai-text"></div>
         <script>
             let recorder, chunks = [], speech = window.speechSynthesis;
 
@@ -77,18 +76,18 @@ def index():
                         const data = await res.json();
                         const msg = data.ai_response || "Sorry, something went wrong.";
 
-                        // Show response text
-                        document.getElementById("ai-text").innerText = "🤖 AI: " + msg;
-
-                        // Speak it aloud
+                        // Speak the response aloud
                         let utter = new SpeechSynthesisUtterance(msg);
                         speech.cancel(); // stop any ongoing speech
                         speech.speak(utter);
                         utter.onend = () => document.getElementById("status").innerText = "Ready";
                     } catch (e) {
                         console.error(e);
-                        document.getElementById("ai-text").innerText = "❌ Error: " + e.message;
                         document.getElementById("status").innerText = "Error";
+                        // Speak the error message
+                        let utter = new SpeechSynthesisUtterance("Sorry, an error occurred. Please try again.");
+                        speech.cancel();
+                        speech.speak(utter);
                     }
 
                     chunks = [];
