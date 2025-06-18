@@ -36,10 +36,11 @@ def index():
     return '''
     <html>
     <head>
-        <title>Speech to AI</title>
+        <title>🎤 Talk to AI</title>
         <style>
             body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
             button { padding: 10px 20px; margin: 5px; }
+            #ai-text { margin-top: 20px; padding: 10px; background: #f0f0f0; border-radius: 8px; }
         </style>
     </head>
     <body>
@@ -47,29 +48,51 @@ def index():
         <button id="start" onclick="start()">Start</button>
         <button id="stop" onclick="stop()" disabled>Stop</button>
         <p id="status">Ready</p>
+        <div id="ai-text"></div>
         <script>
             let recorder, chunks = [], speech = window.speechSynthesis;
+
             async function start() {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 recorder = new MediaRecorder(stream);
+                chunks = [];
+
                 recorder.ondataavailable = e => chunks.push(e.data);
+
                 recorder.onstop = async () => {
                     const blob = new Blob(chunks, { type: 'audio/webm' });
-                    const form = new FormData(); form.append('audio', blob);
+                    const form = new FormData();
+                    form.append('audio', blob);
+
                     document.getElementById("status").innerText = "Processing...";
-                    const res = await fetch('/convert', { method: 'POST', body: form });
-                    const data = await res.json();
-                    let msg = data.ai_response || "Sorry, an error occurred.";
-                    let utter = new SpeechSynthesisUtterance(msg);
-                    speech.cancel(); speech.speak(utter);
-                    utter.onend = () => document.getElementById("status").innerText = "Ready";
+
+                    try {
+                        const res = await fetch('/convert', { method: 'POST', body: form });
+                        const data = await res.json();
+                        const msg = data.ai_response || "Sorry, something went wrong.";
+
+                        // Show response text
+                        document.getElementById("ai-text").innerText = "🤖 AI: " + msg;
+
+                        // Speak it aloud
+                        let utter = new SpeechSynthesisUtterance(msg);
+                        speech.cancel(); // stop any ongoing speech
+                        speech.speak(utter);
+                        utter.onend = () => document.getElementById("status").innerText = "Ready";
+                    } catch (e) {
+                        document.getElementById("ai-text").innerText = "❌ Failed to connect to server.";
+                        document.getElementById("status").innerText = "Error";
+                    }
+
                     chunks = [];
                 };
+
                 recorder.start();
                 document.getElementById("start").disabled = true;
                 document.getElementById("stop").disabled = false;
                 document.getElementById("status").innerText = "Recording...";
             }
+
             function stop() {
                 recorder.stop();
                 document.getElementById("start").disabled = false;
@@ -78,28 +101,31 @@ def index():
         </script>
     </body>
     </html>
-  
-      '''
+    '''
+
 @app.route('/convert', methods=['POST'])
 def convert():
     try:
+        webm_path = "uploads/temp.webm"
         wav_path = "uploads/temp.wav"
-        request.files['audio'].save(wav_path)
+        request.files['audio'].save(webm_path)
+        AudioSegment.from_file(webm_path).export(wav_path, format="wav")
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
             audio = recognizer.record(source)
             text = recognizer.recognize_google(audio)
 
+        os.remove(webm_path)
         os.remove(wav_path)
 
         ai_response = send_to_azure_openai(text)
         return jsonify({"ai_response": ai_response})
+
     except sr.UnknownValueError:
-        return jsonify({"ai_response": "I couldn't understand that. Please try again."})
+        return jsonify({"ai_response": "Sorry, I couldn't understand that. Please try again."})
     except Exception as e:
         return jsonify({"ai_response": f"Error: {str(e)}"})
-
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
